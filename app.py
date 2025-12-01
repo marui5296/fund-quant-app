@@ -5,13 +5,18 @@ import plotly.graph_objects as go
 import plotly.express as px
 from plotly.subplots import make_subplots
 from datetime import datetime, timedelta
+from sklearn.ensemble import RandomForestRegressor, GradientBoostingRegressor
+from sklearn.linear_model import LinearRegression, Ridge
+from sklearn.preprocessing import StandardScaler
+from sklearn.model_selection import train_test_split, TimeSeriesSplit
+from sklearn.metrics import mean_squared_error, r2_score, mean_absolute_error
 import warnings
 warnings.filterwarnings('ignore')
 
 # 设置专业级页面配置
 st.set_page_config(
-    page_title="AlphaFund Pro - 专业投资模拟系统",
-    page_icon="🚀",
+    page_title="QuantMaster Pro - 专业量化模型系统",
+    page_icon="🧠",
     layout="wide",
     initial_sidebar_state="expanded"
 )
@@ -20,548 +25,429 @@ st.set_page_config(
 st.markdown("""
 <style>
     .professional-header {
-        background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+        background: linear-gradient(135deg, #2c3e50 0%, #3498db 100%);
         padding: 2rem;
         border-radius: 10px;
         color: white;
         margin-bottom: 2rem;
         text-align: center;
     }
-    .strategy-card {
-        background-color: #f8f9fa;
+    .factor-card {
+        background: linear-gradient(135deg, #f8f9fa 0%, #e9ecef 100%);
+        padding: 1.5rem;
+        border-radius: 10px;
+        border-left: 4px solid #007bff;
+        margin-bottom: 1rem;
+        transition: all 0.3s ease;
+    }
+    .factor-card:hover {
+        transform: translateY(-2px);
+        box-shadow: 0 4px 15px rgba(0,0,0,0.1);
+    }
+    .model-card {
+        background-color: white;
         padding: 1.5rem;
         border-radius: 10px;
         border: 1px solid #dee2e6;
         margin-bottom: 1rem;
-        transition: all 0.3s ease;
     }
-    .strategy-card:hover {
-        transform: translateY(-2px);
-        box-shadow: 0 4px 15px rgba(0,0,0,0.1);
+    .metric-badge {
+        display: inline-block;
+        padding: 0.25rem 0.5rem;
+        border-radius: 20px;
+        font-size: 0.85rem;
+        margin: 0.1rem;
     }
-    .metric-card {
-        background-color: white;
-        padding: 1rem;
-        border-radius: 8px;
-        border-left: 4px solid #007bff;
-        margin-bottom: 1rem;
-        box-shadow: 0 2px 5px rgba(0,0,0,0.05);
-    }
-    .performance-good { color: #28a745; font-weight: bold; }
-    .performance-neutral { color: #ffc107; font-weight: bold; }
-    .performance-bad { color: #dc3545; font-weight: bold; }
+    .metric-good { background-color: #d4edda; color: #155724; }
+    .metric-neutral { background-color: #fff3cd; color: #856404; }
+    .metric-bad { background-color: #f8d7da; color: #721c24; }
     .tab-content {
         padding: 1.5rem;
         background-color: white;
         border-radius: 10px;
         box-shadow: 0 2px 10px rgba(0,0,0,0.05);
     }
-    .success-box {
-        background-color: #d4edda;
-        border: 1px solid #c3e6cb;
-        border-radius: 5px;
-        padding: 15px;
-        margin: 10px 0;
-    }
-    .error-box {
-        background-color: #f8d7da;
-        border: 1px solid #f5c6cb;
-        border-radius: 5px;
-        padding: 15px;
-        margin: 10px 0;
-    }
 </style>
 """, unsafe_allow_html=True)
 
-class InvestmentSimulator:
-    """投资模拟引擎"""
+class QuantModelSystem:
+    """专业量化模型系统"""
     
-    def __init__(self, risk_free_rate=0.015):
-        self.risk_free_rate = risk_free_rate
-        self.strategies = {}
+    def __init__(self):
+        self.factors = {}
+        self.models = {}
+        self.scaler = StandardScaler()
+        self.risk_free_rate = 0.015
         
-    def generate_realistic_fund_data(self, fund_info, start_date='2020-01-01'):
-        """生成真实感基金数据"""
+    def generate_factor_data(self, fund_code, start_date='2020-01-01'):
+        """生成多因子数据"""
         try:
-            np.random.seed(hash(fund_info['code']) % 10000)
+            np.random.seed(hash(fund_code) % 10000)
             
-            # 基于基金特性设置参数
-            risk_level = fund_info['risk']
-            if risk_level == "高风险":
-                base_volatility = 0.025
-                base_return = 0.0012
-            elif risk_level == "中高风险":
-                base_volatility = 0.018
-                base_return = 0.0009
-            else:
-                base_volatility = 0.012
-                base_return = 0.0006
-            
-            # 创建日期范围（仅工作日）
+            # 创建日期范围
             dates = pd.date_range(start=start_date, end=datetime.now(), freq='B')
             
-            if len(dates) < 30:
-                raise ValueError("数据日期不足，请选择更长的时间范围")
-            
-            # 生成更真实的收益率序列
+            # 生成基础收益率序列
+            base_return = 0.0008
+            base_volatility = 0.02
             returns = np.random.normal(base_return, base_volatility, len(dates))
             
-            # 添加市场相关性
-            market_factor = np.random.normal(0.0005, 0.01, len(dates))
-            returns = returns * 0.7 + market_factor * 0.3
+            # 添加市场因子
+            market_factor = np.random.normal(0.0005, 0.015, len(dates))
+            returns = returns * 0.6 + market_factor * 0.4
             
-            # 生成净值序列
-            nav = 1.0 * (1 + pd.Series(returns)).cumprod()
+            # 生成价格序列
+            price = 1.0 * (1 + pd.Series(returns)).cumprod()
             
-            df = pd.DataFrame({
-                'date': dates,
-                'nav': nav.values,
-                'return': returns
-            }).set_index('date')
+            # 计算各类因子
+            factor_data = pd.DataFrame(index=dates)
+            factor_data['price'] = price.values
+            factor_data['returns'] = returns
             
-            return df
+            # 动量因子
+            factor_data['momentum_1m'] = price / price.shift(20) - 1
+            factor_data['momentum_3m'] = price / price.shift(60) - 1
+            factor_data['momentum_6m'] = price / price.shift(120) - 1
+            
+            # 估值因子（模拟）
+            factor_data['pe_ratio'] = np.random.uniform(10, 30, len(dates))
+            factor_data['pb_ratio'] = np.random.uniform(1, 5, len(dates))
+            
+            # 质量因子
+            factor_data['roe'] = np.random.uniform(0.05, 0.25, len(dates))
+            factor_data['roa'] = np.random.uniform(0.02, 0.15, len(dates))
+            
+            # 波动率因子
+            factor_data['volatility_1m'] = pd.Series(returns).rolling(20).std()
+            factor_data['volatility_3m'] = pd.Series(returns).rolling(60).std()
+            
+            # 流动性因子
+            factor_data['volume'] = np.random.lognormal(10, 1, len(dates))
+            factor_data['turnover'] = np.random.uniform(0.01, 0.1, len(dates))
+            
+            # 技术因子
+            factor_data['rsi'] = self._calculate_rsi(price, 14)
+            factor_data['macd'] = self._calculate_macd(price)
+            factor_data['bollinger_position'] = self._calculate_bollinger_position(price, 20)
+            
+            # 规模因子（模拟）
+            factor_data['market_cap'] = np.random.lognormal(20, 2, len(dates))
+            factor_data['float_market_cap'] = factor_data['market_cap'] * 0.7
+            
+            # 删除NaN值
+            factor_data = factor_data.dropna()
+            
+            return factor_data
             
         except Exception as e:
-            st.error(f"生成基金数据时出错: {str(e)}")
-            # 返回一个简单的数据框避免崩溃
-            dates = pd.date_range(start=start_date, end=datetime.now(), freq='B')
-            nav = np.ones(len(dates))
-            return pd.DataFrame({
-                'date': dates,
-                'nav': nav,
-                'return': np.zeros(len(dates))
-            }).set_index('date')
+            st.error(f"生成因子数据时出错: {str(e)}")
+            return pd.DataFrame()
     
-    def execute_strategy(self, strategy_type, fund_data, initial_capital, **params):
-        """执行投资策略"""
-        try:
-            if len(fund_data) < 30:
-                raise ValueError("基金数据不足，请选择更长的时间范围")
-            
-            strategy_map = {
-                "一次性买入": self._lump_sum_investment,
-                "定期定额": self._dollar_cost_averaging,
-                "价值平均": self._value_averaging,
-                "金字塔买入": self._pyramid_buying,
-                "网格交易": self._grid_trading,
-                "均线策略": self._moving_average_strategy,
-                "动态平衡": self._dynamic_balance
-            }
-            
-            if strategy_type not in strategy_map:
-                raise ValueError(f"未知策略: {strategy_type}")
-            
-            return strategy_map[strategy_type](fund_data, initial_capital, **params)
-            
-        except Exception as e:
-            st.error(f"执行策略时出错: {str(e)}")
-            # 返回一个基础的结果避免崩溃
-            return self._lump_sum_investment(fund_data, initial_capital)
+    def _calculate_rsi(self, prices, period=14):
+        """计算RSI指标"""
+        delta = prices.diff()
+        gain = (delta.where(delta > 0, 0)).rolling(window=period).mean()
+        loss = (-delta.where(delta < 0, 0)).rolling(window=period).mean()
+        rs = gain / loss
+        rsi = 100 - (100 / (1 + rs))
+        return rsi
     
-    def _lump_sum_investment(self, fund_data, initial_capital, **params):
-        """一次性买入策略"""
+    def _calculate_macd(self, prices):
+        """计算MACD"""
+        exp1 = prices.ewm(span=12).mean()
+        exp2 = prices.ewm(span=26).mean()
+        macd = exp1 - exp2
+        return macd
+    
+    def _calculate_bollinger_position(self, prices, window=20):
+        """计算布林带位置"""
+        sma = prices.rolling(window).mean()
+        std = prices.rolling(window).std()
+        upper = sma + 2 * std
+        lower = sma - 2 * std
+        position = (prices - lower) / (upper - lower)
+        return position
+    
+    def calculate_factor_returns(self, factor_data, forward_period=5):
+        """计算因子收益"""
+        # 目标变量：未来N天的收益率
+        factor_data = factor_data.copy()
+        factor_data['target_return'] = factor_data['price'].shift(-forward_period) / factor_data['price'] - 1
+        
+        # 删除包含NaN的行
+        factor_data = factor_data.dropna()
+        
+        # 计算因子与未来收益的相关性
+        factor_cols = [col for col in factor_data.columns if col not in ['price', 'returns', 'target_return']]
+        correlations = {}
+        
+        for factor in factor_cols:
+            corr = factor_data[factor].corr(factor_data['target_return'])
+            correlations[factor] = corr
+        
+        # 排序相关性
+        sorted_correlations = dict(sorted(correlations.items(), key=lambda x: abs(x[1]), reverse=True))
+        
+        return sorted_correlations, factor_data
+    
+    def build_factor_model(self, factor_data, top_n=10):
+        """构建多因子模型"""
         try:
-            nav = fund_data['nav']
-            if len(nav) == 0:
-                raise ValueError("基金数据为空")
+            # 获取因子和目标变量
+            factor_data = factor_data.copy()
+            factor_cols = [col for col in factor_data.columns if col not in ['price', 'returns', 'target_return']]
+            
+            # 选择相关性最高的因子
+            correlations, _ = self.calculate_factor_returns(factor_data)
+            selected_factors = list(correlations.keys())[:top_n]
+            
+            # 准备数据
+            X = factor_data[selected_factors]
+            y = factor_data['target_return']
+            
+            # 标准化特征
+            X_scaled = self.scaler.fit_transform(X)
+            
+            # 划分训练集和测试集（时间序列分割）
+            tscv = TimeSeriesSplit(n_splits=5)
+            
+            # 训练线性回归模型
+            model = Ridge(alpha=1.0)
+            
+            # 交叉验证
+            cv_scores = []
+            for train_idx, test_idx in tscv.split(X_scaled):
+                X_train, X_test = X_scaled[train_idx], X_scaled[test_idx]
+                y_train, y_test = y.iloc[train_idx], y.iloc[test_idx]
                 
-            shares = initial_capital / nav.iloc[0]
-            portfolio_value = shares * nav
+                model.fit(X_train, y_train)
+                y_pred = model.predict(X_test)
+                score = r2_score(y_test, y_pred)
+                cv_scores.append(score)
+            
+            # 最终模型
+            model.fit(X_scaled, y)
+            
+            # 获取因子权重
+            factor_weights = dict(zip(selected_factors, model.coef_))
+            sorted_weights = dict(sorted(factor_weights.items(), key=lambda x: abs(x[1]), reverse=True))
             
             return {
-                'portfolio_value': portfolio_value,
-                'shares': pd.Series(shares, index=nav.index),
-                'trades': [{'date': nav.index[0], 'action': 'BUY', 'shares': shares, 'price': nav.iloc[0], 'note': '一次性买入'}],
-                'cash': pd.Series(0, index=nav.index),
-                'success': True
-            }
-        except Exception as e:
-            st.error(f"一次性买入策略出错: {str(e)}")
-            return self._create_error_result(fund_data, initial_capital)
-    
-    def _dollar_cost_averaging(self, fund_data, initial_capital, **params):
-        """定期定额投资策略"""
-        try:
-            nav = fund_data['nav']
-            if len(nav) == 0:
-                raise ValueError("基金数据为空")
-            
-            interval = params.get('interval', 30)  # 天
-            amount = params.get('amount', min(1000, initial_capital / 12))    # 每次投入金额
-            
-            cash = initial_capital
-            shares = 0
-            portfolio_values = []
-            trades = []
-            
-            for i, (date, price) in enumerate(nav.items()):
-                # 定期投入
-                if i % interval == 0 and cash >= amount:
-                    buy_shares = amount / price
-                    shares += buy_shares
-                    cash -= amount
-                    trades.append({
-                        'date': date, 
-                        'action': 'BUY', 
-                        'shares': buy_shares, 
-                        'price': price,
-                        'note': f'第{len(trades)+1}次定投'
-                    })
-                
-                portfolio_values.append(shares * price + cash)
-            
-            return {
-                'portfolio_value': pd.Series(portfolio_values, index=nav.index),
-                'shares': pd.Series(shares, index=nav.index),
-                'trades': trades,
-                'cash': pd.Series(cash, index=nav.index),
-                'success': True
+                'model': model,
+                'selected_factors': selected_factors,
+                'factor_weights': sorted_weights,
+                'cv_mean_score': np.mean(cv_scores),
+                'cv_std_score': np.std(cv_scores),
+                'feature_importance': dict(zip(selected_factors, abs(model.coef_)))
             }
             
         except Exception as e:
-            st.error(f"定期定额策略出错: {str(e)}")
-            return self._create_error_result(fund_data, initial_capital)
+            st.error(f"构建因子模型时出错: {str(e)}")
+            return None
     
-    def _pyramid_buying(self, fund_data, initial_capital, **params):
-        """金字塔买入策略 - 修复版"""
+    def build_ml_model(self, factor_data, model_type='random_forest'):
+        """构建机器学习模型"""
         try:
-            nav = fund_data['nav']
-            if len(nav) == 0:
-                raise ValueError("基金数据为空")
+            # 准备特征和目标
+            factor_cols = [col for col in factor_data.columns if col not in ['price', 'returns', 'target_return']]
+            X = factor_data[factor_cols]
+            y = factor_data['target_return']
             
-            # 获取参数，设置默认值
-            buy_levels = params.get('buy_levels', [0, -0.05, -0.10])
-            buy_amounts = params.get('buy_amounts', [0.3, 0.4, 0.3])
+            # 标准化特征
+            X_scaled = self.scaler.fit_transform(X)
             
-            # 验证参数
-            if len(buy_levels) != len(buy_amounts):
-                raise ValueError(f"买入层级数量({len(buy_levels)})和买入金额比例数量({len(buy_amounts)})不匹配")
+            # 时间序列分割
+            split_idx = int(len(X) * 0.8)
+            X_train, X_test = X_scaled[:split_idx], X_scaled[split_idx:]
+            y_train, y_test = y.iloc[:split_idx], y.iloc[split_idx:]
             
-            # 确保买入金额比例总和为1
-            total_ratio = sum(buy_amounts)
-            if abs(total_ratio - 1.0) > 0.001:
-                # 自动归一化
-                buy_amounts = [amt / total_ratio for amt in buy_amounts]
-                st.warning(f"买入金额比例已自动归一化: {buy_amounts}")
-            
-            # 初始买入
-            initial_buy_amount = initial_capital * buy_amounts[0]
-            if initial_buy_amount > initial_capital:
-                initial_buy_amount = initial_capital
-                
-            shares = initial_buy_amount / nav.iloc[0]
-            cash = initial_capital - initial_buy_amount
-            
-            portfolio_values = []
-            trades = []
-            triggered_levels = set()  # 记录已触发的层级
-            
-            # 初始买入交易记录
-            trades.append({
-                'date': nav.index[0], 
-                'action': 'BUY', 
-                'shares': shares, 
-                'price': nav.iloc[0],
-                'note': '金字塔第1层买入'
-            })
-            
-            # 设置参考价格（初始价格）
-            reference_price = nav.iloc[0]
-            
-            for i, (date, price) in enumerate(nav.items()):
-                # 计算从参考价格的跌幅
-                if reference_price > 0:
-                    drawdown = (price - reference_price) / reference_price
-                else:
-                    drawdown = 0
-                
-                # 检查是否需要加仓（从第二层开始）
-                for level_idx in range(1, len(buy_levels)):
-                    if level_idx >= len(buy_amounts):
-                        break  # 安全保护
-                        
-                    level = buy_levels[level_idx]
-                    amount_ratio = buy_amounts[level_idx]
-                    
-                    # 如果跌幅达到或超过该层级，且该层级尚未触发
-                    if drawdown <= level and level not in triggered_levels:
-                        buy_amount = initial_capital * amount_ratio
-                        if cash >= buy_amount:
-                            buy_shares = buy_amount / price
-                            shares += buy_shares
-                            cash -= buy_amount
-                            trades.append({
-                                'date': date, 
-                                'action': 'BUY', 
-                                'shares': buy_shares, 
-                                'price': price,
-                                'note': f'金字塔第{level_idx+1}层买入 (跌幅:{drawdown:.2%})'
-                            })
-                            triggered_levels.add(level)
-                
-                portfolio_values.append(shares * price + cash)
-            
-            return {
-                'portfolio_value': pd.Series(portfolio_values, index=nav.index),
-                'shares': pd.Series(shares, index=nav.index),
-                'trades': trades,
-                'cash': pd.Series(cash, index=nav.index),
-                'triggered_levels': list(triggered_levels),
-                'success': True
-            }
-            
-        except Exception as e:
-            st.error(f"金字塔买入策略出错: {str(e)}")
-            return self._create_error_result(fund_data, initial_capital)
-    
-    def _moving_average_strategy(self, fund_data, initial_capital, **params):
-        """均线策略"""
-        try:
-            nav = fund_data['nav']
-            if len(nav) < 60:  # 需要足够的数据计算均线
-                raise ValueError("数据不足，至少需要60个交易日数据")
-            
-            short_window = params.get('short_window', 20)
-            long_window = params.get('long_window', 50)
-            
-            # 计算移动平均
-            short_ma = nav.rolling(window=short_window, min_periods=1).mean()
-            long_ma = nav.rolling(window=long_window, min_periods=1).mean()
-            
-            cash = initial_capital
-            shares = 0
-            portfolio_values = []
-            trades = []
-            position = 0  # 0:空仓, 1:持仓
-            
-            for i in range(len(nav)):
-                date = nav.index[i]
-                price = nav.iloc[i]
-                
-                # 确保有足够数据计算均线
-                if i >= max(short_window, long_window) - 1:
-                    # 金叉买入，死叉卖出
-                    if short_ma.iloc[i] > long_ma.iloc[i] and position == 0:
-                        # 买入
-                        if cash > 0:
-                            shares = cash / price
-                            cash = 0
-                            position = 1
-                            trades.append({
-                                'date': date, 
-                                'action': 'BUY', 
-                                'shares': shares, 
-                                'price': price,
-                                'note': f'金叉信号 (短均线:{short_ma.iloc[i]:.4f}, 长均线:{long_ma.iloc[i]:.4f})'
-                            })
-                    elif short_ma.iloc[i] < long_ma.iloc[i] and position == 1:
-                        # 卖出
-                        if shares > 0:
-                            cash = shares * price
-                            trades.append({
-                                'date': date, 
-                                'action': 'SELL', 
-                                'shares': shares, 
-                                'price': price,
-                                'note': f'死叉信号 (短均线:{short_ma.iloc[i]:.4f}, 长均线:{long_ma.iloc[i]:.4f})'
-                            })
-                            shares = 0
-                            position = 0
-                
-                portfolio_values.append(shares * price + cash)
-            
-            return {
-                'portfolio_value': pd.Series(portfolio_values, index=nav.index),
-                'shares': pd.Series(shares, index=nav.index),
-                'trades': trades,
-                'cash': pd.Series(cash, index=nav.index),
-                'signals': pd.DataFrame({
-                    'price': nav,
-                    'short_ma': short_ma,
-                    'long_ma': long_ma
-                }),
-                'success': True
-            }
-            
-        except Exception as e:
-            st.error(f"均线策略出错: {str(e)}")
-            return self._create_error_result(fund_data, initial_capital)
-    
-    def _value_averaging(self, fund_data, initial_capital, **params):
-        """价值平均策略"""
-        try:
-            nav = fund_data['nav']
-            monthly_target = params.get('monthly_target', initial_capital / 12)
-            
-            cash = initial_capital
-            shares = 0
-            portfolio_values = []
-            trades = []
-            
-            # 每月调整一次
-            for i in range(0, len(nav), 21):  # 大约每月21个交易日
-                if i >= len(nav):
-                    break
-                    
-                date = nav.index[i]
-                price = nav.iloc[i]
-                
-                # 目标市值 = 已投资月数 * 每月目标
-                target_value = (i // 21 + 1) * monthly_target
-                current_value = shares * price + cash
-                
-                # 计算需要调整的金额
-                adjustment = target_value - current_value
-                
-                if adjustment > 0 and cash >= adjustment:  # 需要买入
-                    buy_shares = adjustment / price
-                    shares += buy_shares
-                    cash -= adjustment
-                    trades.append({
-                        'date': date, 
-                        'action': 'BUY', 
-                        'shares': buy_shares, 
-                        'price': price,
-                        'note': f'价值平均补仓 (目标:{target_value:.0f}, 当前:{current_value:.0f})'
-                    })
-                elif adjustment < 0 and shares > 0:  # 需要卖出
-                    sell_value = abs(adjustment)
-                    sell_shares = min(sell_value / price, shares)
-                    shares -= sell_shares
-                    cash += sell_shares * price
-                    trades.append({
-                        'date': date, 
-                        'action': 'SELL', 
-                        'shares': sell_shares, 
-                        'price': price,
-                        'note': f'价值平均减仓 (目标:{target_value:.0f}, 当前:{current_value:.0f})'
-                    })
-                
-            # 计算每日净值
-            for i, price in enumerate(nav):
-                portfolio_values.append(shares * price + cash)
-            
-            return {
-                'portfolio_value': pd.Series(portfolio_values, index=nav.index),
-                'shares': pd.Series(shares, index=nav.index),
-                'trades': trades,
-                'cash': pd.Series(cash, index=nav.index),
-                'success': True
-            }
-            
-        except Exception as e:
-            st.error(f"价值平均策略出错: {str(e)}")
-            return self._create_error_result(fund_data, initial_capital)
-    
-    def _create_error_result(self, fund_data, initial_capital):
-        """创建错误时的默认结果"""
-        nav = fund_data['nav']
-        return {
-            'portfolio_value': pd.Series([initial_capital] * len(nav), index=nav.index),
-            'shares': pd.Series(0, index=nav.index),
-            'trades': [],
-            'cash': pd.Series(initial_capital, index=nav.index),
-            'success': False
-        }
-    
-    def calculate_performance_metrics(self, portfolio_value, benchmark_value=None):
-        """计算投资组合绩效指标"""
-        try:
-            if len(portfolio_value) < 2:
-                return {}
-            
-            returns = portfolio_value.pct_change().dropna()
-            
-            if len(returns) == 0:
-                return {}
-            
-            metrics = {}
-            
-            # 基础收益指标
-            total_return = (portfolio_value.iloc[-1] / portfolio_value.iloc[0]) - 1
-            days = (portfolio_value.index[-1] - portfolio_value.index[0]).days
-            if days > 0:
-                annual_return = (1 + total_return) ** (365 / days) - 1
+            # 选择模型
+            if model_type == 'random_forest':
+                model = RandomForestRegressor(
+                    n_estimators=100,
+                    max_depth=10,
+                    min_samples_split=20,
+                    random_state=42
+                )
+            elif model_type == 'gradient_boosting':
+                model = GradientBoostingRegressor(
+                    n_estimators=100,
+                    learning_rate=0.1,
+                    max_depth=5,
+                    random_state=42
+                )
             else:
-                annual_return = 0
+                model = LinearRegression()
             
-            # 风险指标
-            volatility = returns.std() * np.sqrt(252)
-            downside_returns = returns[returns < 0]
-            downside_volatility = downside_returns.std() * np.sqrt(252) if len(downside_returns) > 0 else 0
+            # 训练模型
+            model.fit(X_train, y_train)
             
-            # 风险调整收益指标
-            sharpe_ratio = (annual_return - self.risk_free_rate) / volatility if volatility > 0 else 0
-            sortino_ratio = (annual_return - self.risk_free_rate) / downside_volatility if downside_volatility > 0 else 0
+            # 预测
+            y_pred_train = model.predict(X_train)
+            y_pred_test = model.predict(X_test)
             
-            # 最大回撤
-            cumulative = (1 + returns).cumprod()
-            rolling_max = cumulative.expanding().max()
-            drawdown = (cumulative - rolling_max) / rolling_max
-            max_drawdown = drawdown.min() if len(drawdown) > 0 else 0
+            # 评估指标
+            metrics = {
+                'train_r2': r2_score(y_train, y_pred_train),
+                'test_r2': r2_score(y_test, y_pred_test),
+                'train_mse': mean_squared_error(y_train, y_pred_train),
+                'test_mse': mean_squared_error(y_test, y_pred_test),
+                'train_mae': mean_absolute_error(y_train, y_pred_train),
+                'test_mae': mean_absolute_error(y_test, y_pred_test)
+            }
             
-            # Calmar比率
-            calmar_ratio = annual_return / abs(max_drawdown) if max_drawdown != 0 else 0
+            # 特征重要性
+            if hasattr(model, 'feature_importances_'):
+                feature_importance = dict(zip(factor_cols, model.feature_importances_))
+            elif hasattr(model, 'coef_'):
+                feature_importance = dict(zip(factor_cols, abs(model.coef_)))
+            else:
+                feature_importance = {}
             
-            # 胜率
-            winning_days = (returns > 0).sum()
-            total_days = len(returns)
-            win_rate = winning_days / total_days if total_days > 0 else 0
-            
-            # 盈亏比
-            avg_win = returns[returns > 0].mean() if len(returns[returns > 0]) > 0 else 0
-            avg_loss = abs(returns[returns < 0].mean()) if len(returns[returns < 0]) > 0 else 0
-            profit_loss_ratio = avg_win / avg_loss if avg_loss > 0 else 0
-            
-            metrics.update({
-                '累计收益率': total_return,
-                '年化收益率': annual_return,
-                '年化波动率': volatility,
-                '最大回撤': max_drawdown,
-                '夏普比率': sharpe_ratio,
-                '索提诺比率': sortino_ratio,
-                '卡玛比率': calmar_ratio,
-                '胜率': win_rate,
-                '盈亏比': profit_loss_ratio,
-                '交易天数': total_days
-            })
-            
-            # 如果提供了基准，计算超额收益
-            if benchmark_value is not None and len(benchmark_value) > 1:
-                benchmark_return = (benchmark_value.iloc[-1] / benchmark_value.iloc[0]) - 1
-                excess_return = total_return - benchmark_return
-                
-                # 计算信息比率
-                excess_returns = portfolio_value.pct_change() - benchmark_value.pct_change()
-                tracking_error = excess_returns.std() * np.sqrt(252) if len(excess_returns) > 0 else 0
-                information_ratio = excess_return / tracking_error if tracking_error > 0 else 0
-                
-                metrics.update({
-                    '基准收益率': benchmark_return,
-                    '超额收益率': excess_return,
-                    '信息比率': information_ratio
-                })
-            
-            return metrics
+            return {
+                'model': model,
+                'metrics': metrics,
+                'feature_importance': feature_importance,
+                'predictions': {
+                    'train': y_pred_train,
+                    'test': y_pred_test,
+                    'actual': y_test
+                }
+            }
             
         except Exception as e:
-            st.error(f"计算绩效指标时出错: {str(e)}")
-            return {}
+            st.error(f"构建机器学习模型时出错: {str(e)}")
+            return None
+    
+    def generate_signals(self, factor_model, current_factors, threshold=0.02):
+        """生成交易信号"""
+        try:
+            # 获取选中的因子
+            selected_factors = factor_model['selected_factors']
+            
+            # 准备当前数据
+            X_current = current_factors[selected_factors].values.reshape(1, -1)
+            X_scaled = self.scaler.transform(X_current)
+            
+            # 预测未来收益
+            predicted_return = factor_model['model'].predict(X_scaled)[0]
+            
+            # 生成信号
+            if predicted_return > threshold:
+                signal = "强烈买入"
+                signal_strength = min(predicted_return / threshold, 3.0)
+            elif predicted_return > threshold * 0.5:
+                signal = "买入"
+                signal_strength = predicted_return / threshold
+            elif predicted_return > -threshold * 0.5:
+                signal = "持有"
+                signal_strength = 0
+            elif predicted_return > -threshold:
+                signal = "卖出"
+                signal_strength = abs(predicted_return / threshold)
+            else:
+                signal = "强烈卖出"
+                signal_strength = min(abs(predicted_return / threshold), 3.0)
+            
+            # 因子贡献分析
+            factor_contributions = {}
+            model_coef = factor_model['model'].coef_
+            
+            for i, factor in enumerate(selected_factors):
+                contribution = model_coef[i] * X_current[0][i]
+                factor_contributions[factor] = contribution
+            
+            return {
+                'predicted_return': predicted_return,
+                'signal': signal,
+                'signal_strength': signal_strength,
+                'factor_contributions': factor_contributions,
+                'confidence': min(abs(predicted_return) / threshold, 1.0)
+            }
+            
+        except Exception as e:
+            st.error(f"生成信号时出错: {str(e)}")
+            return None
+    
+    def portfolio_optimization(self, funds_data, target_return=None, risk_aversion=1.0):
+        """投资组合优化"""
+        try:
+            # 收集所有基金的收益率
+            returns_data = {}
+            for fund_name, data in funds_data.items():
+                if 'returns' in data.columns:
+                    returns_data[fund_name] = data['returns']
+            
+            if len(returns_data) < 2:
+                raise ValueError("至少需要2只基金进行组合优化")
+            
+            # 创建收益率矩阵
+            returns_df = pd.DataFrame(returns_data).dropna()
+            
+            if len(returns_df) < 30:
+                raise ValueError("数据不足，至少需要30个交易日数据")
+            
+            # 计算预期收益和协方差矩阵
+            expected_returns = returns_df.mean() * 252
+            cov_matrix = returns_df.cov() * 252
+            
+            # 马科维茨优化
+            from scipy.optimize import minimize
+            
+            n_assets = len(expected_returns)
+            
+            def portfolio_return(weights):
+                return weights.T @ expected_returns
+            
+            def portfolio_volatility(weights):
+                return np.sqrt(weights.T @ cov_matrix @ weights)
+            
+            def objective(weights):
+                return - (portfolio_return(weights) - 0.5 * risk_aversion * portfolio_volatility(weights) ** 2)
+            
+            # 约束条件
+            constraints = ({'type': 'eq', 'fun': lambda x: np.sum(x) - 1})
+            bounds = tuple((0, 1) for _ in range(n_assets))
+            
+            # 初始权重
+            initial_weights = np.array([1/n_assets] * n_assets)
+            
+            # 优化
+            result = minimize(
+                objective,
+                initial_weights,
+                method='SLSQP',
+                bounds=bounds,
+                constraints=constraints
+            )
+            
+            optimal_weights = result.x
+            
+            return {
+                'weights': optimal_weights,
+                'expected_return': portfolio_return(optimal_weights),
+                'expected_volatility': portfolio_volatility(optimal_weights),
+                'sharpe_ratio': (portfolio_return(optimal_weights) - self.risk_free_rate) / portfolio_volatility(optimal_weights)
+            }
+            
+        except Exception as e:
+            st.error(f"投资组合优化时出错: {str(e)}")
+            return None
 
 def main():
     # 专业标题
     st.markdown("""
     <div class="professional-header">
-        <h1>🚀 AlphaFund Pro - 专业投资模拟与策略回测系统</h1>
-        <p>基于10年量化经验构建，支持多种投资策略模拟</p>
+        <h1>🧠 QuantMaster Pro - 专业量化模型系统</h1>
+        <p>基于多因子模型和机器学习的专业量化分析平台</p>
     </div>
     """, unsafe_allow_html=True)
     
-    # 初始化投资模拟引擎
-    simulator = InvestmentSimulator()
+    # 初始化量化系统
+    quant_system = QuantModelSystem()
     
     # 侧边栏 - 配置区域
-    st.sidebar.header("🔧 投资配置")
+    st.sidebar.header("🔧 系统配置")
     
     # 基金数据库
     FUND_UNIVERSE = {
@@ -575,663 +461,674 @@ def main():
         "002190": {"name": "农银新能源主题", "category": "新能源主题", "risk": "高风险"},
     }
     
-    # 投资配置
+    # 选择基金
     selected_funds = st.sidebar.multiselect(
-        "选择投资基金",
+        "选择分析基金",
         options=list(FUND_UNIVERSE.keys()),
         format_func=lambda x: f"{x} - {FUND_UNIVERSE[x]['name']}",
         default=["022365"],
-        help="可以选择多只基金进行组合分析"
-    )
-    
-    initial_capital = st.sidebar.number_input(
-        "初始资金 (元)", 
-        value=100000, 
-        min_value=1000, 
-        step=1000,
-        help="模拟投资的起始资金"
-    )
-    
-    # 选择策略
-    strategy_options = {
-        "一次性买入": "最简单的投资方式，一次性投入全部资金",
-        "定期定额": "定期投入固定金额，适合长期投资",
-        "金字塔买入": "价格下跌时逐步加仓，越跌买得越多",
-        "均线策略": "基于移动平均线的趋势跟踪策略",
-        "价值平均": "每月调整持仓至目标价值，自动低买高卖"
-    }
-    
-    selected_strategy = st.sidebar.selectbox(
-        "选择投资策略",
-        options=list(strategy_options.keys()),
-        format_func=lambda x: f"{x} - {strategy_options[x]}",
-        index=0
-    )
-    
-    # 策略参数配置
-    st.sidebar.header("⚙️ 策略参数")
-    
-    strategy_params = {}
-    
-    if selected_strategy == "定期定额":
-        interval = st.sidebar.slider("定投周期 (天)", 7, 90, 30)
-        amount = st.sidebar.number_input("每次定投金额 (元)", 
-                                        value=min(2000, initial_capital // 12), 
-                                        min_value=100, 
-                                        max_value=initial_capital,
-                                        step=100)
-        strategy_params = {'interval': interval, 'amount': amount}
-        
-    elif selected_strategy == "金字塔买入":
-        st.sidebar.markdown("**金字塔买入策略配置**")
-        levels = st.sidebar.slider("金字塔层级", 2, 5, 3)
-        
-        # 初始化买入层级和金额比例
-        buy_levels = [0]  # 第1层：初始买入
-        buy_amounts = []
-        
-        # 第一层配置
-        amount_pct1 = st.sidebar.number_input(
-            "第1层仓位比例 (%)", 
-            value=int(100/levels), 
-            min_value=10, 
-            max_value=100,
-            help="初始买入的资金比例"
-        )
-        buy_amounts.append(amount_pct1/100)
-        
-        # 后续层级配置
-        for i in range(1, levels):
-            col1, col2 = st.sidebar.columns(2)
-            with col1:
-                level = st.sidebar.number_input(
-                    f"第{i+1}层触发跌幅 (%)", 
-                    value=5*i, 
-                    min_value=1, 
-                    max_value=50, 
-                    key=f"level_{i}"
-                )
-            with col2:
-                amount_pct = st.sidebar.number_input(
-                    f"第{i+1}层仓位比例 (%)", 
-                    value=int(100/levels), 
-                    min_value=1, 
-                    max_value=100, 
-                    key=f"amount_{i}"
-                )
-            
-            buy_levels.append(-level/100)
-            buy_amounts.append(amount_pct/100)
-        
-        strategy_params = {'buy_levels': buy_levels, 'buy_amounts': buy_amounts}
-        
-        # 显示配置信息
-        st.sidebar.markdown("**配置预览:**")
-        for i in range(levels):
-            if i == 0:
-                st.sidebar.write(f"第{i+1}层: 初始买入 {buy_amounts[i]:.1%}")
-            else:
-                st.sidebar.write(f"第{i+1}层: 跌幅 ≥ {abs(buy_levels[i]):.1%} 时买入 {buy_amounts[i]:.1%}")
-        
-    elif selected_strategy == "均线策略":
-        col1, col2 = st.sidebar.columns(2)
-        with col1:
-            short_window = st.slider("短期均线周期", 5, 60, 20)
-        with col2:
-            long_window = st.slider("长期均线周期", 20, 200, 50)
-        
-        strategy_params = {'short_window': short_window, 'long_window': long_window}
-        
-    elif selected_strategy == "价值平均":
-        monthly_target = st.sidebar.number_input(
-            "每月目标增值 (元)", 
-            value=initial_capital // 12, 
-            min_value=100, 
-            max_value=initial_capital,
-            step=100
-        )
-        strategy_params = {'monthly_target': monthly_target}
-    
-    # 回测时间范围
-    st.sidebar.header("📅 回测设置")
-    backtest_period = st.sidebar.selectbox(
-        "回测时间范围", 
-        ["3个月", "6个月", "1年", "2年", "3年"], 
-        index=2
+        help="选择要进行量化分析的基金"
     )
     
     # 主内容区域
-    tab1, tab2, tab3, tab4 = st.tabs(["🎯 策略回测", "📊 绩效分析", "📈 对比分析", "💡 策略建议"])
+    tab1, tab2, tab3, tab4, tab5 = st.tabs([
+        "📊 因子分析", 
+        "🤖 机器学习", 
+        "📈 模型回测", 
+        "💼 组合优化", 
+        "🎯 实时信号"
+    ])
     
     # 初始化session state
-    if 'simulation_results' not in st.session_state:
-        st.session_state.simulation_results = None
-    if 'fund_data_dict' not in st.session_state:
-        st.session_state.fund_data_dict = None
+    if 'factor_data' not in st.session_state:
+        st.session_state.factor_data = {}
+    if 'factor_models' not in st.session_state:
+        st.session_state.factor_models = {}
     
     with tab1:
         st.markdown('<div class="tab-content">', unsafe_allow_html=True)
+        st.subheader("📊 多因子分析")
         
-        if st.button("🚀 开始模拟投资", type="primary", use_container_width=True):
-            if not selected_funds:
-                st.warning("请至少选择一只基金")
-                st.stop()
-            
-            with st.spinner("正在执行策略回测..."):
-                # 生成基金数据
-                period_mapping = {
-                    "3个月": 90,
-                    "6个月": 180,
-                    "1年": 365,
-                    "2年": 730,
-                    "3年": 1095
-                }
-                
-                days = period_mapping.get(backtest_period, 365)
-                start_date = (datetime.now() - timedelta(days=days)).strftime('%Y-%m-%d')
-                
-                fund_data_dict = {}
-                progress_bar = st.progress(0)
-                status_text = st.empty()
-                
-                for idx, fund_code in enumerate(selected_funds):
-                    status_text.text(f"正在生成 {FUND_UNIVERSE[fund_code]['name']} 的历史数据...")
-                    fund_info = {'code': fund_code, **FUND_UNIVERSE[fund_code]}
-                    fund_data = simulator.generate_realistic_fund_data(fund_info, start_date)
-                    fund_data_dict[fund_code] = fund_data
-                    progress_bar.progress((idx + 1) / len(selected_funds))
-                
-                # 执行策略
-                results = {}
-                for fund_code in selected_funds:
-                    fund_data = fund_data_dict[fund_code]
-                    result = simulator.execute_strategy(
-                        selected_strategy, fund_data, initial_capital, **strategy_params
-                    )
-                    results[fund_code] = result
-                
-                # 存储到session state
-                st.session_state.simulation_results = results
-                st.session_state.fund_data_dict = fund_data_dict
-                st.session_state.selected_funds = selected_funds
-                st.session_state.selected_strategy = selected_strategy
-                st.session_state.initial_capital = initial_capital
-                
-                status_text.text("策略回测完成！")
-                progress_bar.empty()
-                
-                # 显示投资概况
-                st.subheader("📋 投资概况")
-                
-                col1, col2, col3, col4 = st.columns(4)
-                with col1:
-                    st.metric("初始资金", f"¥{initial_capital:,.0f}")
-                with col2:
-                    st.metric("投资策略", selected_strategy)
-                with col3:
-                    st.metric("回测周期", backtest_period)
-                with col4:
-                    st.metric("分析基金数", len(selected_funds))
-                
-                # 显示净值曲线
-                st.subheader("📈 投资组合净值曲线")
-                
-                fig = go.Figure()
-                
-                for fund_code in selected_funds:
-                    fund_name = FUND_UNIVERSE[fund_code]['name']
-                    result = results[fund_code]
-                    
-                    if result.get('success', False):
-                        portfolio_value = result['portfolio_value']
-                        
-                        fig.add_trace(go.Scatter(
-                            x=portfolio_value.index,
-                            y=portfolio_value,
-                            name=f"{fund_name} - 策略",
-                            line=dict(width=2)
-                        ))
-                        
-                        # 添加基金净值作为基准
-                        fund_nav = fund_data_dict[fund_code]['nav']
-                        benchmark_value = initial_capital * (fund_nav / fund_nav.iloc[0])
-                        
-                        fig.add_trace(go.Scatter(
-                            x=fund_nav.index,
-                            y=benchmark_value,
-                            name=f"{fund_name} - 买入持有",
-                            line=dict(dash='dash', width=1),
-                            opacity=0.7
-                        ))
-                
-                fig.update_layout(
-                    title="投资组合净值 vs 买入持有基准",
-                    xaxis_title="日期",
-                    yaxis_title="组合价值 (元)",
-                    hovermode='x unified',
-                    height=500,
-                    legend=dict(
-                        orientation="h",
-                        yanchor="bottom",
-                        y=1.02,
-                        xanchor="right",
-                        x=1
-                    )
-                )
-                
-                st.plotly_chart(fig, use_container_width=True)
-                
-                # 显示交易记录
-                st.subheader("📝 交易记录")
-                
-                for fund_code in selected_funds:
-                    result = results[fund_code]
-                    if result.get('trades') and len(result['trades']) > 0:
+        if selected_funds:
+            if st.button("生成因子数据", type="primary"):
+                with st.spinner("正在生成因子数据..."):
+                    for fund_code in selected_funds:
                         fund_name = FUND_UNIVERSE[fund_code]['name']
-                        st.markdown(f"**{fund_name} 交易记录**")
+                        st.write(f"**正在分析 {fund_name}**")
                         
-                        trades_df = pd.DataFrame(result['trades'])
-                        trades_df['金额'] = trades_df['shares'] * trades_df['price']
-                        trades_df = trades_df.round({
-                            'shares': 2,
-                            'price': 4,
-                            '金额': 2
-                        })
-                        
-                        st.dataframe(trades_df, use_container_width=True)
-                        
-                        # 显示交易统计
-                        buy_trades = trades_df[trades_df['action'] == 'BUY']
-                        sell_trades = trades_df[trades_df['action'] == 'SELL']
-                        
-                        col1, col2 = st.columns(2)
-                        with col1:
-                            st.metric("买入次数", len(buy_trades))
-                        with col2:
-                            st.metric("卖出次数", len(sell_trades))
-                    else:
-                        st.info(f"**{FUND_UNIVERSE[fund_code]['name']}** 在此期间无交易记录")
-        
-        elif st.session_state.simulation_results:
-            # 如果已经有结果，显示上次的分析
-            st.info("显示上次模拟投资的结果")
-            
-            results = st.session_state.simulation_results
-            fund_data_dict = st.session_state.fund_data_dict
-            selected_funds = st.session_state.selected_funds
-            
-            # 显示净值曲线
-            st.subheader("📈 投资组合净值曲线")
-            
-            fig = go.Figure()
-            
-            for fund_code in selected_funds:
-                fund_name = FUND_UNIVERSE[fund_code]['name']
-                result = results[fund_code]
-                
-                if result.get('success', False):
-                    portfolio_value = result['portfolio_value']
-                    
-                    fig.add_trace(go.Scatter(
-                        x=portfolio_value.index,
-                        y=portfolio_value,
-                        name=f"{fund_name} - 策略",
-                        line=dict(width=2)
-                    ))
-                    
-                    # 添加基金净值作为基准
-                    fund_nav = fund_data_dict[fund_code]['nav']
-                    benchmark_value = st.session_state.initial_capital * (fund_nav / fund_nav.iloc[0])
-                    
-                    fig.add_trace(go.Scatter(
-                        x=fund_nav.index,
-                        y=benchmark_value,
-                        name=f"{fund_name} - 买入持有",
-                        line=dict(dash='dash', width=1),
-                        opacity=0.7
-                    ))
-            
-            fig.update_layout(
-                title="投资组合净值 vs 买入持有基准",
-                xaxis_title="日期",
-                yaxis_title="组合价值 (元)",
-                hovermode='x unified',
-                height=500,
-                legend=dict(
-                    orientation="h",
-                    yanchor="bottom",
-                    y=1.02,
-                    xanchor="right",
-                    x=1
-                )
-            )
-            
-            st.plotly_chart(fig, use_container_width=True)
+                        # 生成因子数据
+                        factor_data = quant_system.generate_factor_data(fund_code)
+                        if not factor_data.empty:
+                            st.session_state.factor_data[fund_code] = factor_data
+                            
+                            # 计算因子收益相关性
+                            correlations, _ = quant_system.calculate_factor_returns(factor_data)
+                            
+                            # 显示相关性分析
+                            st.write(f"**因子收益相关性 (前10个)**")
+                            corr_df = pd.DataFrame({
+                                '因子': list(correlations.keys())[:10],
+                                '相关性': list(correlations.values())[:10]
+                            })
+                            
+                            # 创建相关性图表
+                            fig_corr = px.bar(
+                                corr_df,
+                                x='因子',
+                                y='相关性',
+                                title=f"{fund_name} - 因子收益相关性",
+                                color='相关性',
+                                color_continuous_scale='RdYlGn',
+                                range_color=[-1, 1]
+                            )
+                            fig_corr.update_layout(height=400)
+                            st.plotly_chart(fig_corr, use_container_width=True)
+                            
+                            # 显示因子数据预览
+                            with st.expander("查看因子数据详情"):
+                                st.dataframe(factor_data.describe(), use_container_width=True)
+                        else:
+                            st.error(f"无法生成 {fund_name} 的因子数据")
+        else:
+            st.info("请选择至少一只基金进行分析")
         
         st.markdown('</div>', unsafe_allow_html=True)
     
     with tab2:
         st.markdown('<div class="tab-content">', unsafe_allow_html=True)
+        st.subheader("🤖 机器学习模型")
         
-        if st.session_state.simulation_results:
-            st.subheader("📊 绩效指标分析")
+        if st.session_state.factor_data:
+            selected_fund = st.selectbox(
+                "选择要建模的基金",
+                options=list(st.session_state.factor_data.keys()),
+                format_func=lambda x: FUND_UNIVERSE[x]['name']
+            )
             
-            results = st.session_state.simulation_results
-            fund_data_dict = st.session_state.fund_data_dict
-            
-            # 计算并显示绩效指标
-            metrics_list = []
-            
-            for fund_code in st.session_state.selected_funds:
-                fund_name = FUND_UNIVERSE[fund_code]['name']
-                result = results[fund_code]
+            if selected_fund:
+                factor_data = st.session_state.factor_data[selected_fund]
                 
-                if result.get('success', False):
-                    portfolio_value = result['portfolio_value']
-                    
-                    # 基准净值（买入持有）
-                    fund_nav = fund_data_dict[fund_code]['nav']
-                    benchmark_value = st.session_state.initial_capital * (fund_nav / fund_nav.iloc[0])
-                    
-                    # 计算绩效指标
-                    metrics = simulator.calculate_performance_metrics(portfolio_value, benchmark_value)
-                    metrics['基金名称'] = fund_name
-                    metrics_list.append(metrics)
-            
-            if metrics_list:
-                metrics_df = pd.DataFrame(metrics_list)
-                
-                # 选择要显示的指标
-                display_columns = ['基金名称', '累计收益率', '年化收益率', '年化波动率', 
-                                 '最大回撤', '夏普比率', '胜率', '盈亏比']
-                
-                if '基准收益率' in metrics_df.columns:
-                    display_columns.insert(2, '基准收益率')
-                    display_columns.insert(3, '超额收益率')
-                
-                display_df = metrics_df[display_columns].copy()
-                
-                # 格式化显示
-                percent_cols = ['累计收益率', '年化收益率', '年化波动率', '最大回撤', '胜率']
-                if '基准收益率' in display_df.columns:
-                    percent_cols.extend(['基准收益率', '超额收益率'])
-                
-                for col in percent_cols:
-                    if col in display_df.columns:
-                        try:
-                            display_df[col] = display_df[col].apply(lambda x: f"{x:.2%}")
-                        except:
-                            display_df[col] = display_df[col].apply(lambda x: f"{x:.4f}")
-                
-                # 显示表格
-                st.dataframe(display_df, use_container_width=True)
-                
-                # 绩效对比雷达图
-                st.subheader("🎯 策略绩效雷达图")
-                
-                if len(metrics_df) > 0:
-                    # 选择关键指标进行雷达图展示
-                    radar_metrics = ['年化收益率', '夏普比率', '胜率', '盈亏比']
-                    
-                    # 归一化处理
-                    normalized_data = []
-                    fund_names = []
-                    
-                    for idx, row in metrics_df.iterrows():
-                        values = []
-                        for metric in radar_metrics:
-                            val = row.get(metric, 0)
-                            if metric == '年化收益率':
-                                # 年化收益率可能为负，进行偏移
-                                values.append((val + 0.2) * 100)  # 假设最低-20%，归一化到0-100
-                            elif metric == '夏普比率':
-                                values.append(max(0, val) * 20)  # 夏普比率通常0-5，归一化到0-100
-                            elif metric == '胜率':
-                                values.append(val * 100)  # 胜率0-1，转为百分比
-                            elif metric == '盈亏比':
-                                values.append(min(val * 20, 100))  # 盈亏比通常0-5，归一化到0-100
-                        
-                        normalized_data.append(values)
-                        fund_names.append(row['基金名称'])
-                    
-                    fig_radar = go.Figure()
-                    
-                    for values, name in zip(normalized_data, fund_names):
-                        fig_radar.add_trace(go.Scatterpolar(
-                            r=values,
-                            theta=radar_metrics,
-                            fill='toself',
-                            name=name
-                        ))
-                    
-                    fig_radar.update_layout(
-                        polar=dict(
-                            radialaxis=dict(
-                                visible=True,
-                                range=[0, 100]
-                            )),
-                        showlegend=True,
-                        title="策略绩效多维对比 (已归一化)",
-                        height=500
+                col1, col2 = st.columns(2)
+                with col1:
+                    model_type = st.selectbox(
+                        "选择模型类型",
+                        ["线性回归", "随机森林", "梯度提升"],
+                        index=0
                     )
-                    
-                    st.plotly_chart(fig_radar, use_container_width=True)
-            else:
-                st.warning("未能计算绩效指标，请检查数据")
+                
+                with col2:
+                    top_n_factors = st.slider("使用因子数量", 5, 30, 10)
+                
+                if st.button("训练机器学习模型", type="primary"):
+                    with st.spinner("正在训练模型..."):
+                        # 训练因子模型
+                        factor_model = quant_system.build_factor_model(factor_data, top_n_factors)
+                        
+                        if factor_model:
+                            st.session_state.factor_models[selected_fund] = factor_model
+                            
+                            # 显示模型结果
+                            st.subheader("模型性能")
+                            
+                            col1, col2 = st.columns(2)
+                            with col1:
+                                st.metric(
+                                    "交叉验证R²均值",
+                                    f"{factor_model['cv_mean_score']:.4f}"
+                                )
+                            with col2:
+                                st.metric(
+                                    "交叉验证R²标准差",
+                                    f"{factor_model['cv_std_score']:.4f}"
+                                )
+                            
+                            # 显示因子权重
+                            st.subheader("因子权重分析")
+                            
+                            weights_df = pd.DataFrame({
+                                '因子': list(factor_model['factor_weights'].keys()),
+                                '权重': list(factor_model['factor_weights'].values())
+                            })
+                            
+                            fig_weights = px.bar(
+                                weights_df,
+                                x='因子',
+                                y='权重',
+                                title="因子权重",
+                                color='权重',
+                                color_continuous_scale='RdBu'
+                            )
+                            fig_weights.update_layout(height=400)
+                            st.plotly_chart(fig_weights, use_container_width=True)
+                            
+                            # 训练机器学习模型
+                            ml_model_type = {
+                                "线性回归": "linear",
+                                "随机森林": "random_forest",
+                                "梯度提升": "gradient_boosting"
+                            }[model_type]
+                            
+                            ml_model = quant_system.build_ml_model(factor_data, ml_model_type)
+                            
+                            if ml_model:
+                                # 显示ML模型结果
+                                st.subheader("机器学习模型性能")
+                                
+                                metrics_df = pd.DataFrame({
+                                    '指标': ['R²分数', '均方误差', '平均绝对误差'],
+                                    '训练集': [
+                                        ml_model['metrics']['train_r2'],
+                                        ml_model['metrics']['train_mse'],
+                                        ml_model['metrics']['train_mae']
+                                    ],
+                                    '测试集': [
+                                        ml_model['metrics']['test_r2'],
+                                        ml_model['metrics']['test_mse'],
+                                        ml_model['metrics']['test_mae']
+                                    ]
+                                })
+                                
+                                st.dataframe(metrics_df, use_container_width=True)
+                                
+                                # 特征重要性
+                                if ml_model['feature_importance']:
+                                    st.subheader("特征重要性")
+                                    
+                                    importance_df = pd.DataFrame({
+                                        '特征': list(ml_model['feature_importance'].keys())[:15],
+                                        '重要性': list(ml_model['feature_importance'].values())[:15]
+                                    }).sort_values('重要性', ascending=False)
+                                    
+                                    fig_importance = px.bar(
+                                        importance_df,
+                                        x='特征',
+                                        y='重要性',
+                                        title="特征重要性排名",
+                                        color='重要性',
+                                        color_continuous_scale='Blues'
+                                    )
+                                    fig_importance.update_layout(height=400)
+                                    st.plotly_chart(fig_importance, use_container_width=True)
+                                
+                                # 预测 vs 实际对比
+                                st.subheader("预测 vs 实际对比")
+                                
+                                fig_predictions = go.Figure()
+                                fig_predictions.add_trace(go.Scatter(
+                                    x=np.arange(len(ml_model['predictions']['test'])),
+                                    y=ml_model['predictions']['test'],
+                                    name='预测值',
+                                    mode='lines'
+                                ))
+                                fig_predictions.add_trace(go.Scatter(
+                                    x=np.arange(len(ml_model['predictions']['actual'])),
+                                    y=ml_model['predictions']['actual'],
+                                    name='实际值',
+                                    mode='lines'
+                                ))
+                                
+                                fig_predictions.update_layout(
+                                    title="测试集预测 vs 实际",
+                                    xaxis_title="样本",
+                                    yaxis_title="收益率",
+                                    height=400
+                                )
+                                st.plotly_chart(fig_predictions, use_container_width=True)
+                        else:
+                            st.error("模型训练失败")
         else:
-            st.info("请先在'策略回测'标签页运行模拟投资")
+            st.info("请先在'因子分析'标签页生成因子数据")
         
         st.markdown('</div>', unsafe_allow_html=True)
     
     with tab3:
         st.markdown('<div class="tab-content">', unsafe_allow_html=True)
-        st.subheader("📈 策略对比分析")
+        st.subheader("📈 模型回测")
         
-        if st.session_state.simulation_results:
-            # 策略对比分析
-            comparison_data = []
+        if st.session_state.factor_models:
+            selected_fund = st.selectbox(
+                "选择要回测的模型",
+                options=list(st.session_state.factor_models.keys()),
+                format_func=lambda x: FUND_UNIVERSE[x]['name'],
+                key="backtest_fund"
+            )
             
-            for fund_code in st.session_state.selected_funds:
-                fund_name = FUND_UNIVERSE[fund_code]['name']
+            if selected_fund:
+                factor_model = st.session_state.factor_models[selected_fund]
+                factor_data = st.session_state.factor_data[selected_fund]
                 
-                # 当前策略
-                result = st.session_state.simulation_results[fund_code]
-                if result.get('success', False):
-                    portfolio_value = result['portfolio_value']
-                    final_value = portfolio_value.iloc[-1]
-                    
-                    # 一次性买入策略（作为基准）
-                    fund_data = st.session_state.fund_data_dict[fund_code]
-                    lump_sum_result = simulator.execute_strategy(
-                        "一次性买入", fund_data, st.session_state.initial_capital
-                    )
-                    
-                    # 定期定额策略
-                    dca_result = simulator.execute_strategy(
-                        "定期定额", fund_data, st.session_state.initial_capital, 
-                        interval=30, amount=st.session_state.initial_capital/12
-                    )
-                    
-                    # 计算各种策略的最终收益
-                    strategies = {
-                        "当前策略": final_value,
-                        "一次性买入": lump_sum_result['portfolio_value'].iloc[-1] if lump_sum_result.get('success') else st.session_state.initial_capital,
-                        "定期定额": dca_result['portfolio_value'].iloc[-1] if dca_result.get('success') else st.session_state.initial_capital
-                    }
-                    
-                    for strategy_name, final_val in strategies.items():
-                        return_pct = (final_val - st.session_state.initial_capital) / st.session_state.initial_capital
-                        comparison_data.append({
-                            '基金': fund_name,
-                            '策略': strategy_name,
-                            '最终价值': final_val,
-                            '收益率': return_pct
-                        })
-            
-            if comparison_data:
-                comparison_df = pd.DataFrame(comparison_data)
+                # 回测参数
+                col1, col2 = st.columns(2)
+                with col1:
+                    initial_capital = st.number_input("初始资金", value=100000, min_value=1000, step=1000)
+                with col2:
+                    threshold = st.slider("交易阈值 (%)", 0.1, 5.0, 2.0) / 100
                 
-                # 创建对比柱状图
-                fig_comparison = px.bar(
-                    comparison_df,
-                    x='策略',
-                    y='收益率',
-                    color='基金',
-                    barmode='group',
-                    title="不同策略收益率对比",
-                    text=comparison_df['收益率'].apply(lambda x: f"{x:.2%}")
-                )
-                
-                fig_comparison.update_layout(
-                    yaxis_tickformat='.2%',
-                    hovermode='x unified',
-                    height=500
-                )
-                
-                fig_comparison.update_traces(textposition='outside')
-                
-                st.plotly_chart(fig_comparison, use_container_width=True)
-                
-                # 显示详细对比表格
-                st.subheader("详细对比数据")
-                
-                pivot_df = comparison_df.pivot_table(
-                    index='基金', 
-                    columns='策略', 
-                    values='收益率'
-                )
-                
-                # 格式化百分比
-                styled_df = pivot_df.style.format("{:.2%}")
-                st.dataframe(styled_df, use_container_width=True)
-            else:
-                st.warning("无法进行策略对比分析")
+                if st.button("执行模型回测", type="primary"):
+                    with st.spinner("正在执行回测..."):
+                        # 模拟交易回测
+                        cash = initial_capital
+                        shares = 0
+                        portfolio_values = []
+                        trades = []
+                        
+                        for i in range(len(factor_data)):
+                            if i >= 100:  # 从第100天开始，确保有足够的历史数据
+                                current_factors = factor_data.iloc[i]
+                                
+                                # 准备特征数据
+                                selected_factors = factor_model['selected_factors']
+                                if set(selected_factors).issubset(factor_data.columns):
+                                    X_current = factor_data[selected_factors].iloc[i].values.reshape(1, -1)
+                                    X_scaled = quant_system.scaler.transform(X_current)
+                                    
+                                    # 预测收益
+                                    predicted_return = factor_model['model'].predict(X_scaled)[0]
+                                    
+                                    current_price = factor_data['price'].iloc[i]
+                                    
+                                    # 交易逻辑
+                                    if predicted_return > threshold and cash > 0:
+                                        # 买入
+                                        buy_amount = cash * 0.5  # 使用50%现金买入
+                                        buy_shares = buy_amount / current_price
+                                        shares += buy_shares
+                                        cash -= buy_amount
+                                        trades.append({
+                                            'date': factor_data.index[i],
+                                            'action': 'BUY',
+                                            'price': current_price,
+                                            'shares': buy_shares,
+                                            'predicted_return': predicted_return
+                                        })
+                                    elif predicted_return < -threshold and shares > 0:
+                                        # 卖出
+                                        sell_shares = shares * 0.5  # 卖出50%持仓
+                                        cash += sell_shares * current_price
+                                        shares -= sell_shares
+                                        trades.append({
+                                            'date': factor_data.index[i],
+                                            'action': 'SELL',
+                                            'price': current_price,
+                                            'shares': sell_shares,
+                                            'predicted_return': predicted_return
+                                        })
+                            
+                            portfolio_values.append(shares * factor_data['price'].iloc[i] + cash)
+                        
+                        # 计算回测结果
+                        portfolio_series = pd.Series(portfolio_values, index=factor_data.index)
+                        benchmark_series = initial_capital * (factor_data['price'] / factor_data['price'].iloc[0])
+                        
+                        # 计算绩效指标
+                        portfolio_returns = portfolio_series.pct_change().dropna()
+                        benchmark_returns = benchmark_series.pct_change().dropna()
+                        
+                        total_return = (portfolio_series.iloc[-1] / portfolio_series.iloc[0]) - 1
+                        benchmark_return = (benchmark_series.iloc[-1] / benchmark_series.iloc[0]) - 1
+                        
+                        volatility = portfolio_returns.std() * np.sqrt(252)
+                        sharpe_ratio = (total_return * 252/len(portfolio_series) - quant_system.risk_free_rate) / volatility if volatility > 0 else 0
+                        
+                        # 最大回撤
+                        cumulative = (1 + portfolio_returns).cumprod()
+                        rolling_max = cumulative.expanding().max()
+                        drawdown = (cumulative - rolling_max) / rolling_max
+                        max_drawdown = drawdown.min()
+                        
+                        # 显示回测结果
+                        st.subheader("回测结果")
+                        
+                        col1, col2, col3, col4 = st.columns(4)
+                        with col1:
+                            st.metric("策略总收益", f"{total_return:.2%}")
+                        with col2:
+                            st.metric("基准收益", f"{benchmark_return:.2%}")
+                        with col3:
+                            st.metric("超额收益", f"{(total_return - benchmark_return):.2%}")
+                        with col4:
+                            st.metric("夏普比率", f"{sharpe_ratio:.2f}")
+                        
+                        # 净值曲线
+                        st.subheader("净值曲线对比")
+                        
+                        fig_backtest = go.Figure()
+                        fig_backtest.add_trace(go.Scatter(
+                            x=portfolio_series.index,
+                            y=portfolio_series,
+                            name='策略净值',
+                            line=dict(width=2, color='blue')
+                        ))
+                        fig_backtest.add_trace(go.Scatter(
+                            x=benchmark_series.index,
+                            y=benchmark_series,
+                            name='基准净值',
+                            line=dict(width=1, color='gray', dash='dash')
+                        ))
+                        
+                        fig_backtest.update_layout(
+                            title="策略净值 vs 基准净值",
+                            xaxis_title="日期",
+                            yaxis_title="净值",
+                            height=500
+                        )
+                        st.plotly_chart(fig_backtest, use_container_width=True)
+                        
+                        # 交易记录
+                        if trades:
+                            st.subheader("交易记录")
+                            trades_df = pd.DataFrame(trades)
+                            st.dataframe(trades_df, use_container_width=True)
+                        else:
+                            st.info("在回测期间没有产生交易")
         else:
-            st.info("请先在'策略回测'标签页运行模拟投资")
+            st.info("请先在'机器学习'标签页训练模型")
         
         st.markdown('</div>', unsafe_allow_html=True)
     
     with tab4:
         st.markdown('<div class="tab-content">', unsafe_allow_html=True)
-        st.subheader("💡 专业策略建议")
+        st.subheader("💼 投资组合优化")
         
-        if st.session_state.simulation_results:
-            # 基于回测结果生成建议
-            recommendations = []
-            
-            for fund_code in st.session_state.selected_funds:
-                fund_name = FUND_UNIVERSE[fund_code]['name']
-                fund_risk = FUND_UNIVERSE[fund_code]['risk']
-                result = st.session_state.simulation_results[fund_code]
-                
-                if result.get('success', False):
-                    portfolio_value = result['portfolio_value']
-                    fund_data = st.session_state.fund_data_dict[fund_code]
+        if len(selected_funds) >= 2:
+            if st.button("执行组合优化", type="primary"):
+                with st.spinner("正在优化投资组合..."):
+                    # 收集所有基金的因子数据
+                    funds_data = {}
+                    for fund_code in selected_funds:
+                        if fund_code in st.session_state.factor_data:
+                            funds_data[FUND_UNIVERSE[fund_code]['name']] = st.session_state.factor_data[fund_code]
                     
-                    # 计算关键指标
-                    returns = portfolio_value.pct_change().dropna()
-                    if len(returns) > 0:
-                        total_return = (portfolio_value.iloc[-1] / portfolio_value.iloc[0]) - 1
-                        volatility = returns.std() * np.sqrt(252)
-                        sharpe_ratio = (total_return * 252/len(portfolio_value) - simulator.risk_free_rate) / volatility if volatility > 0 else 0
+                    if len(funds_data) >= 2:
+                        # 执行组合优化
+                        optimization_result = quant_system.portfolio_optimization(funds_data)
                         
-                        # 分析最大回撤
-                        cumulative = (1 + returns).cumprod()
-                        rolling_max = cumulative.expanding().max()
-                        drawdown = (cumulative - rolling_max) / rolling_max
-                        max_drawdown = drawdown.min() if len(drawdown) > 0 else 0
-                        
-                        # 生成建议
-                        recommendation = {
-                            '基金': fund_name,
-                            '风险评估': fund_risk,
-                            '总体评价': '',
-                            '具体建议': []
-                        }
-                        
-                        # 评估策略表现
-                        if sharpe_ratio > 1.0:
-                            recommendation['总体评价'] = "优秀"
-                            recommendation['具体建议'].append("✅ 策略表现优异，夏普比率较高")
-                        elif sharpe_ratio > 0.5:
-                            recommendation['总体评价'] = "良好"
-                            recommendation['具体建议'].append("✅ 策略表现良好，风险收益比较合理")
+                        if optimization_result:
+                            # 显示优化结果
+                            st.subheader("优化结果")
+                            
+                            col1, col2, col3 = st.columns(3)
+                            with col1:
+                                st.metric(
+                                    "预期年化收益",
+                                    f"{optimization_result['expected_return']:.2%}"
+                                )
+                            with col2:
+                                st.metric(
+                                    "预期波动率",
+                                    f"{optimization_result['expected_volatility']:.2%}"
+                                )
+                            with col3:
+                                st.metric(
+                                    "夏普比率",
+                                    f"{optimization_result['sharpe_ratio']:.2f}"
+                                )
+                            
+                            # 显示权重分配
+                            st.subheader("最优权重分配")
+                            
+                            weights_df = pd.DataFrame({
+                                '基金': list(funds_data.keys()),
+                                '权重': optimization_result['weights'],
+                                '建议': ['超配' if w > 1/len(funds_data) else '低配' for w in optimization_result['weights']]
+                            }).sort_values('权重', ascending=False)
+                            
+                            fig_weights = px.pie(
+                                weights_df,
+                                values='权重',
+                                names='基金',
+                                title="最优投资组合权重分配",
+                                hole=0.3
+                            )
+                            st.plotly_chart(fig_weights, use_container_width=True)
+                            
+                            # 显示权重表格
+                            st.dataframe(weights_df, use_container_width=True)
+                            
+                            # 有效前沿分析
+                            st.subheader("有效前沿")
+                            
+                            # 生成随机权重组合
+                            n_portfolios = 1000
+                            portfolio_returns = []
+                            portfolio_volatilities = []
+                            
+                            for _ in range(n_portfolios):
+                                weights = np.random.random(len(funds_data))
+                                weights /= weights.sum()
+                                
+                                # 收集所有基金的收益率
+                                returns_list = []
+                                for fund_name, data in funds_data.items():
+                                    if 'returns' in data.columns:
+                                        returns_list.append(data['returns'])
+                                
+                                if returns_list:
+                                    returns_df = pd.concat(returns_list, axis=1).dropna()
+                                    if len(returns_df) > 0:
+                                        cov_matrix = returns_df.cov() * 252
+                                        expected_returns = returns_df.mean() * 252
+                                        
+                                        port_return = weights.T @ expected_returns
+                                        port_volatility = np.sqrt(weights.T @ cov_matrix @ weights)
+                                        
+                                        portfolio_returns.append(port_return)
+                                        portfolio_volatilities.append(port_volatility)
+                            
+                            if portfolio_returns and portfolio_volatilities:
+                                # 创建有效前沿图表
+                                frontier_df = pd.DataFrame({
+                                    '收益率': portfolio_returns,
+                                    '波动率': portfolio_volatilities,
+                                    '夏普比率': [(r - quant_system.risk_free_rate) / v if v > 0 else 0 
+                                                for r, v in zip(portfolio_returns, portfolio_volatilities)]
+                                })
+                                
+                                fig_frontier = px.scatter(
+                                    frontier_df,
+                                    x='波动率',
+                                    y='收益率',
+                                    color='夏普比率',
+                                    title="有效前沿",
+                                    color_continuous_scale='Viridis'
+                                )
+                                
+                                # 添加最优组合点
+                                fig_frontier.add_trace(go.Scatter(
+                                    x=[optimization_result['expected_volatility']],
+                                    y=[optimization_result['expected_return']],
+                                    mode='markers',
+                                    marker=dict(size=15, color='red', symbol='star'),
+                                    name='最优组合'
+                                ))
+                                
+                                st.plotly_chart(fig_frontier, use_container_width=True)
                         else:
-                            recommendation['总体评价'] = "一般"
-                            recommendation['具体建议'].append("⚠️ 策略表现一般，建议优化参数或更换策略")
-                        
-                        # 风险评估
-                        if abs(max_drawdown) > 0.2:
-                            recommendation['具体建议'].append("⚠️ 最大回撤较大，需注意风险控制")
-                        elif abs(max_drawdown) < 0.1:
-                            recommendation['具体建议'].append("✅ 回撤控制良好，风险相对较低")
-                        
-                        # 基于基金类型和策略的建议
-                        if "科技" in fund_name or "新能源" in fund_name:
-                            recommendation['具体建议'].append("📱 科技/新能源基金波动较大，建议采用金字塔买入或定期定额策略")
-                        elif "消费" in fund_name or "白酒" in fund_name:
-                            recommendation['具体建议'].append("🍶 消费主题基金适合长期持有，建议结合定投策略")
-                        elif "均衡" in fund_name or "沪深300" in fund_name:
-                            recommendation['具体建议'].append("⚖️ 均衡型/宽基基金适合作为核心持仓")
-                        
-                        recommendations.append(recommendation)
-            
-            # 显示建议
-            if recommendations:
-                for rec in recommendations:
-                    color_map = {
-                        "优秀": "#28a745",
-                        "良好": "#ffc107",
-                        "一般": "#dc3545"
-                    }
-                    
-                    st.markdown(f"""
-                    <div class="strategy-card">
-                        <h4>{rec['基金']} <span style="float:right; color:{color_map.get(rec['总体评价'], '#6c757d')}">
-                            {rec['总体评价']}
-                        </span></h4>
-                        <p><strong>风险评估:</strong> {rec['风险评估']}</p>
-                        <ul>
-                            {''.join([f'<li>{item}</li>' for item in rec['具体建议']])}
-                        </ul>
-                    </div>
-                    """, unsafe_allow_html=True)
-                
-                # 通用投资建议
-                st.markdown("""
-                ### 📚 通用投资原则
-                
-                1. **分散投资**：不要把所有资金投入单一基金
-                2. **长期视角**：基金投资应以年为单位，避免频繁交易
-                3. **风险匹配**：选择与自身风险承受能力匹配的基金
-                4. **定期检视**：每季度检视投资组合，根据市场环境适当调整
-                5. **纪律投资**：严格执行既定策略，避免情绪化交易
-                
-                ### 🔄 策略调整建议
-                
-                如果您发现当前策略表现不佳，可以考虑：
-                - 调整策略参数（如定投频率、金字塔层级）
-                - 更换更适合当前市场的策略
-                - 增加对冲或风险控制措施
-                - 调整不同策略的组合比例
-                """)
-            else:
-                st.warning("无法生成策略建议，请检查数据")
+                            st.error("组合优化失败")
+                    else:
+                        st.warning("需要至少2只基金的数据进行组合优化")
         else:
-            st.info("请先在'策略回测'标签页运行模拟投资，获取个性化建议")
+            st.info("请选择至少2只基金进行组合优化")
         
         st.markdown('</div>', unsafe_allow_html=True)
     
-    # 底部免责声明
+    with tab5:
+        st.markdown('<div class="tab-content">', unsafe_allow_html=True)
+        st.subheader("🎯 实时交易信号")
+        
+        if st.session_state.factor_models and st.session_state.factor_data:
+            # 选择基金和模型
+            col1, col2 = st.columns(2)
+            with col1:
+                signal_fund = st.selectbox(
+                    "选择基金",
+                    options=list(st.session_state.factor_models.keys()),
+                    format_func=lambda x: FUND_UNIVERSE[x]['name'],
+                    key="signal_fund"
+                )
+            
+            with col2:
+                signal_threshold = st.slider("信号阈值 (%)", 0.5, 10.0, 2.0) / 100
+            
+            if st.button("生成实时信号", type="primary"):
+                with st.spinner("正在分析..."):
+                    factor_model = st.session_state.factor_models[signal_fund]
+                    factor_data = st.session_state.factor_data[signal_fund]
+                    
+                    # 获取最新数据
+                    latest_factors = factor_data.iloc[-1]
+                    
+                    # 生成信号
+                    signal_result = quant_system.generate_signals(
+                        factor_model, 
+                        latest_factors.to_frame().T, 
+                        signal_threshold
+                    )
+                    
+                    if signal_result:
+                        # 显示信号
+                        st.subheader("📢 交易信号")
+                        
+                        # 信号强度指示器
+                        signal_strength = signal_result['signal_strength']
+                        signal_color = {
+                            "强烈买入": "green",
+                            "买入": "lightgreen", 
+                            "持有": "gray",
+                            "卖出": "lightcoral",
+                            "强烈卖出": "red"
+                        }.get(signal_result['signal'], "gray")
+                        
+                        # 创建信号卡片
+                        st.markdown(f"""
+                        <div style="
+                            background-color: {signal_color};
+                            color: white;
+                            padding: 2rem;
+                            border-radius: 10px;
+                            text-align: center;
+                            margin: 1rem 0;
+                            font-size: 1.5rem;
+                            font-weight: bold;
+                        ">
+                            {signal_result['signal']}
+                        </div>
+                        """, unsafe_allow_html=True)
+                        
+                        # 信号详情
+                        col1, col2, col3 = st.columns(3)
+                        with col1:
+                            st.metric(
+                                "预测收益率",
+                                f"{signal_result['predicted_return']:.2%}",
+                                delta=f"{signal_result['predicted_return'] - signal_threshold:.2%}"
+                            )
+                        with col2:
+                            st.metric(
+                                "信号强度",
+                                f"{signal_result['signal_strength']:.2f}"
+                            )
+                        with col3:
+                            st.metric(
+                                "置信度",
+                                f"{signal_result['confidence']:.2%}"
+                            )
+                        
+                        # 因子贡献分析
+                        st.subheader("📊 因子贡献分析")
+                        
+                        contributions_df = pd.DataFrame({
+                            '因子': list(signal_result['factor_contributions'].keys()),
+                            '贡献度': list(signal_result['factor_contributions'].values())
+                        }).sort_values('贡献度', key=abs, ascending=False)
+                        
+                        fig_contributions = px.bar(
+                            contributions_df.head(10),
+                            x='因子',
+                            y='贡献度',
+                            title="前10大因子贡献度",
+                            color='贡献度',
+                            color_continuous_scale='RdYlBu'
+                        )
+                        fig_contributions.update_layout(height=400)
+                        st.plotly_chart(fig_contributions, use_container_width=True)
+                        
+                        # 历史信号表现
+                        st.subheader("📈 历史信号表现")
+                        
+                        # 分析过去一段时间的信号准确性
+                        history_days = 100
+                        history_signals = []
+                        history_actual = []
+                        
+                        for i in range(len(factor_data) - history_days, len(factor_data)):
+                            if i >= 100:
+                                current_factors = factor_data.iloc[i]
+                                X_current = factor_data[factor_model['selected_factors']].iloc[i].values.reshape(1, -1)
+                                X_scaled = quant_system.scaler.transform(X_current)
+                                
+                                predicted = factor_model['model'].predict(X_scaled)[0]
+                                
+                                # 计算实际收益
+                                if i + 5 < len(factor_data):
+                                    actual_return = factor_data['price'].iloc[i+5] / factor_data['price'].iloc[i] - 1
+                                    
+                                    history_signals.append(predicted)
+                                    history_actual.append(actual_return)
+                        
+                        if history_signals and history_actual:
+                            # 计算信号准确性
+                            correct_predictions = 0
+                            for pred, actual in zip(history_signals, history_actual):
+                                if (pred > signal_threshold and actual > 0) or \
+                                   (pred < -signal_threshold and actual < 0) or \
+                                   (abs(pred) <= signal_threshold and abs(actual) < signal_threshold):
+                                    correct_predictions += 1
+                            
+                            accuracy = correct_predictions / len(history_signals) if history_signals else 0
+                            
+                            st.metric("历史信号准确率", f"{accuracy:.2%}")
+                            
+                            # 创建历史信号图表
+                            fig_history = go.Figure()
+                            fig_history.add_trace(go.Scatter(
+                                x=np.arange(len(history_signals)),
+                                y=history_signals,
+                                name='预测信号',
+                                mode='lines+markers'
+                            ))
+                            fig_history.add_trace(go.Scatter(
+                                x=np.arange(len(history_actual)),
+                                y=history_actual,
+                                name='实际收益',
+                                mode='lines+markers'
+                            ))
+                            
+                            fig_history.update_layout(
+                                title="历史信号 vs 实际收益",
+                                xaxis_title="时间点",
+                                yaxis_title="收益率",
+                                height=400
+                            )
+                            st.plotly_chart(fig_history, use_container_width=True)
+                    else:
+                        st.error("生成信号失败")
+        else:
+            st.info("请先在'机器学习'标签页训练模型")
+        
+        st.markdown('</div>', unsafe_allow_html=True)
+    
+    # 底部信息
     st.sidebar.markdown("---")
-    st.sidebar.warning("""
-    **免责声明**
+    st.sidebar.info("""
+    **📚 量化模型说明**
     
-    本系统基于历史数据回测，结果仅供参考。
-    投资有风险，过往业绩不代表未来表现。
-    投资决策需谨慎，建议咨询专业投资顾问。
+    1. **因子模型**: 基于多因子线性回归
+    2. **机器学习**: 随机森林、梯度提升等
+    3. **组合优化**: 马科维茨最优组合
+    4. **风险控制**: 夏普比率、最大回撤等
     
-    *AlphaFund Pro v3.1 - 专业投资模拟系统*
+    *QuantMaster Pro v1.0*
     """)
 
 if __name__ == "__main__":
